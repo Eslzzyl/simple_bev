@@ -1,9 +1,8 @@
-import numpy as np
 import os
-import imageio.v2 as imageio
+
 import cv2
-import torch
-import torch.nn.functional as F
+import imageio.v2 as imageio
+import numpy as np
 
 vid_id = 0
 model_name = "v02"
@@ -14,7 +13,7 @@ os.makedirs(savefolder_name, exist_ok=True)
 T = 40
 seg_h, seg_w = 600, 600
 rgb_h, rgb_w = 187, 400
-assert(seg_w * 2 == rgb_w * 3)
+assert (seg_w * 2 == rgb_w * 3)
 
 for t in range(T):
     print(t)
@@ -45,15 +44,15 @@ for t in range(T):
     cam5 = cv2.resize(cam5.astype(np.uint8), (rgb_w, rgb_h))
 
     # collect into collage
-    collage_t = np.zeros((seg_h + rgb_h*2, seg_w * 2, 3))
+    collage_t = np.zeros((seg_h + rgb_h * 2, seg_w * 2, 3))
     collage_t[:seg_h, :seg_w] = seg_e
     collage_t[:seg_h, seg_w:] = seg_g
-    collage_t[seg_h:seg_h+rgb_h, :rgb_w] = cam1
-    collage_t[seg_h:seg_h+rgb_h, rgb_w:rgb_w*2] = cam0
-    collage_t[seg_h:seg_h+rgb_h, rgb_w*2:] = cam2
-    collage_t[seg_h+rgb_h:seg_h+rgb_h*2, :rgb_w] = cam5
-    collage_t[seg_h+rgb_h:seg_h+rgb_h*2, rgb_w:rgb_w*2] = cam4
-    collage_t[seg_h+rgb_h:seg_h+rgb_h*2, rgb_w*2:] = cam3
+    collage_t[seg_h:seg_h + rgb_h, :rgb_w] = cam1
+    collage_t[seg_h:seg_h + rgb_h, rgb_w:rgb_w * 2] = cam0
+    collage_t[seg_h:seg_h + rgb_h, rgb_w * 2:] = cam2
+    collage_t[seg_h + rgb_h:seg_h + rgb_h * 2, :rgb_w] = cam5
+    collage_t[seg_h + rgb_h:seg_h + rgb_h * 2, rgb_w:rgb_w * 2] = cam4
+    collage_t[seg_h + rgb_h:seg_h + rgb_h * 2, rgb_w * 2:] = cam3
 
     collage_t_name = os.path.join(savefolder_name, "collage_%03d.png" % t)
     imageio.imsave(collage_t_name, collage_t.astype(np.uint8))

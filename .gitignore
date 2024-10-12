@@ -1,2 +1,5 @@
 *~
 __pycache__
+checkpoints
+logs_nuscenes
+.ipynb_checkpoints

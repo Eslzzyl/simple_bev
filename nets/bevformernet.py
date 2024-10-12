@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import sys
+
 sys.path.append("..")
 
 import utils.geom
@@ -15,15 +16,14 @@ from efficientnet_pytorch import EfficientNet
 
 EPS = 1e-4
 
-from functools import partial
-from einops.layers.torch import Rearrange, Reduce
-
 from nets.ops.modules import MSDeformAttn, MSDeformAttn3D
+
 
 def set_bn_momentum(model, momentum=0.1):
     for m in model.modules():
         if isinstance(m, (nn.InstanceNorm1d, nn.InstanceNorm2d, nn.InstanceNorm3d)):
             m.momentum = momentum
+
 
 class UpsamplingConcat(nn.Module):
     def __init__(self, in_channels, out_channels, scale_factor=2):
@@ -45,6 +45,7 @@ class UpsamplingConcat(nn.Module):
         x_to_upsample = torch.cat([x, x_to_upsample], dim=1)
         return self.conv(x_to_upsample)
 
+
 class UpsamplingAdd(nn.Module):
     def __init__(self, in_channels, out_channels, scale_factor=2):
         super().__init__()
@@ -57,6 +58,7 @@ class UpsamplingAdd(nn.Module):
     def forward(self, x, x_skip):
         x = self.upsample_layer(x)
         return x + x_skip
+
 
 class Decoder(nn.Module):
     def __init__(self, in_channels, n_classes, predict_future_flow):
@@ -139,7 +141,7 @@ class Decoder(nn.Module):
 
         if bev_flip_indices is not None:
             bev_flip1_index, bev_flip2_index = bev_flip_indices
-            x[bev_flip2_index] = torch.flip(x[bev_flip2_index], [-2]) # note [-2] instead of [-3], since Y is gone now
+            x[bev_flip2_index] = torch.flip(x[bev_flip2_index], [-2])  # note [-2] instead of [-3], since Y is gone now
             x[bev_flip1_index] = torch.flip(x[bev_flip1_index], [-1])
 
         feat_output = self.feat_head(x)
@@ -158,7 +160,10 @@ class Decoder(nn.Module):
             if instance_future_output is not None else None,
         }
 
+
 import torchvision
+
+
 class Encoder_res101(nn.Module):
     def __init__(self, C):
         super().__init__()
@@ -178,6 +183,7 @@ class Encoder_res101(nn.Module):
 
         return x
 
+
 class Encoder_res50(nn.Module):
     def __init__(self, C):
         super().__init__()
@@ -196,6 +202,7 @@ class Encoder_res50(nn.Module):
         x = self.depth_layer(x)
 
         return x
+
 
 class Encoder_eff(nn.Module):
     def __init__(self, C, version='b4'):
@@ -288,10 +295,11 @@ class Encoder_eff(nn.Module):
         x = self.depth_layer(x)  # feature and depth head
         return x
 
+
 class VanillaSelfAttention(nn.Module):
     def __init__(self, dim=128, dropout=0.1):
         super(VanillaSelfAttention, self).__init__()
-        self.dim = dim 
+        self.dim = dim
         self.dropout = nn.Dropout(dropout)
         self.deformable_attention = MSDeformAttn(d_model=dim, n_levels=1, n_heads=4, n_points=8)
         self.output_proj = nn.Linear(dim, dim)
@@ -309,24 +317,25 @@ class VanillaSelfAttention(nn.Module):
         device = query.device
         Z, X = 200, 200
         ref_z, ref_x = torch.meshgrid(
-            torch.linspace(0.5, Z-0.5, Z, dtype=torch.float, device=query.device),
-            torch.linspace(0.5, X-0.5, X, dtype=torch.float, device=query.device)
+            torch.linspace(0.5, Z - 0.5, Z, dtype=torch.float, device=query.device),
+            torch.linspace(0.5, X - 0.5, X, dtype=torch.float, device=query.device)
         )
         ref_z = ref_z.reshape(-1)[None] / Z
         ref_x = ref_x.reshape(-1)[None] / X
         reference_points = torch.stack((ref_z, ref_x), -1)
-        reference_points = reference_points.repeat(B, 1, 1).unsqueeze(2) # (B, N, 1, 2)
+        reference_points = reference_points.repeat(B, 1, 1).unsqueeze(2)  # (B, N, 1, 2)
 
         B, N, C = query.shape
-        input_spatial_shapes = query.new_zeros([1,2]).long()
+        input_spatial_shapes = query.new_zeros([1, 2]).long()
         input_spatial_shapes[:] = 200
-        input_level_start_index = query.new_zeros([1,]).long()
-        queries = self.deformable_attention(query, reference_points, query.clone(), 
-            input_spatial_shapes, input_level_start_index)
+        input_level_start_index = query.new_zeros([1, ]).long()
+        queries = self.deformable_attention(query, reference_points, query.clone(),
+                                            input_spatial_shapes, input_level_start_index)
 
         queries = self.output_proj(queries)
 
         return self.dropout(queries) + inp_residual
+
 
 class SpatialCrossAttention(nn.Module):
     # From https://github.com/zhiqi-li/BEVFormer
@@ -370,25 +379,26 @@ class SpatialCrossAttention(nn.Module):
             for i, reference_points_per_img in enumerate(reference_points_cam):
                 index_query_per_img = indexes[i]
                 queries_rebatch[j, i, :len(index_query_per_img)] = query[j, index_query_per_img]
-                reference_points_rebatch[j, i, :len(index_query_per_img)] = reference_points_per_img[j, index_query_per_img]
+                reference_points_rebatch[j, i, :len(index_query_per_img)] = reference_points_per_img[
+                    j, index_query_per_img]
 
         key = key.permute(2, 0, 1, 3).reshape(
             B * S, M, C)
         value = value.permute(2, 0, 1, 3).reshape(
             B * S, M, C)
 
-        level_start_index = query.new_zeros([1,]).long()
-        queries = self.deformable_attention(query=queries_rebatch.view(B*S, max_len, self.dim),
-            key=key, value=value,
-            reference_points=reference_points_rebatch.view(B*S, max_len, D, 2),
-            spatial_shapes=spatial_shapes,
-            level_start_index=level_start_index).view(B, S, max_len, self.dim)
+        level_start_index = query.new_zeros([1, ]).long()
+        queries = self.deformable_attention(query=queries_rebatch.view(B * S, max_len, self.dim),
+                                            key=key, value=value,
+                                            reference_points=reference_points_rebatch.view(B * S, max_len, D, 2),
+                                            spatial_shapes=spatial_shapes,
+                                            level_start_index=level_start_index).view(B, S, max_len, self.dim)
 
         for j in range(B):
             for i, index_query_per_img in enumerate(indexes):
                 slots[j, index_query_per_img] += queries[j, i, :len(index_query_per_img)]
 
-        count = bev_mask.sum(-1) > 0 
+        count = bev_mask.sum(-1) > 0
         count = count.permute(1, 2, 0).sum(-1)
         count = torch.clamp(count, min=1.0)
         slots = slots / count[..., None]
@@ -396,25 +406,26 @@ class SpatialCrossAttention(nn.Module):
 
         return self.dropout(slots) + inp_residual
 
+
 # no radar/lidar integration
 class Bevformernet(nn.Module):
-    def __init__(self, Z, Y, X, 
+    def __init__(self, Z, Y, X,
                  rand_flip=False,
                  latent_dim=128,
                  encoder_type="res101"):
         super(Bevformernet, self).__init__()
         assert (encoder_type in ["res101", "res50", "effb0", "effb4"])
 
-        self.Z, self.Y, self.X = Z, Y, X  
+        self.Z, self.Y, self.X = Z, Y, X
         self.rand_flip = rand_flip
         self.latent_dim = latent_dim
         self.encoder_type = encoder_type
         self.use_radar = False
         self.use_lidar = False
 
-        self.mean = torch.as_tensor([0.485, 0.456, 0.406]).reshape(1,3,1,1).float().cuda()
-        self.std = torch.as_tensor([0.229, 0.224, 0.225]).reshape(1,3,1,1).float().cuda()
-        
+        self.mean = torch.as_tensor([0.485, 0.456, 0.406]).reshape(1, 3, 1, 1).float().cuda()
+        self.std = torch.as_tensor([0.229, 0.224, 0.225]).reshape(1, 3, 1, 1).float().cuda()
+
         # Encoder
         self.feat2d_dim = feat2d_dim = latent_dim
         if encoder_type == "res101":
@@ -428,13 +439,13 @@ class Bevformernet(nn.Module):
             self.encoder = Encoder_eff(feat2d_dim, version='b4')
 
         # BEVFormer self & cross attention layers
-        self.bev_queries = nn.Parameter(0.1*torch.randn(latent_dim, Z, X)) # C, Z, X
-        self.bev_queries_pos = nn.Parameter(0.1*torch.randn(latent_dim, Z, X)) # C, Z, X
+        self.bev_queries = nn.Parameter(0.1 * torch.randn(latent_dim, Z, X))  # C, Z, X
+        self.bev_queries_pos = nn.Parameter(0.1 * torch.randn(latent_dim, Z, X))  # C, Z, X
         num_layers = 6
         self.num_layers = num_layers
         self.self_attn_layers = nn.ModuleList([
             VanillaSelfAttention(dim=latent_dim) for _ in range(num_layers)
-        ]) # deformable self attention
+        ])  # deformable self attention
         self.norm1_layers = nn.ModuleList([
             nn.LayerNorm(latent_dim) for _ in range(num_layers)
         ])
@@ -446,7 +457,8 @@ class Bevformernet(nn.Module):
         ])
         ffn_dim = 1028
         self.ffn_layers = nn.ModuleList([
-            nn.Sequential(nn.Linear(latent_dim, ffn_dim), nn.ReLU(), nn.Linear(ffn_dim, latent_dim)) for _ in range(num_layers)
+            nn.Sequential(nn.Linear(latent_dim, ffn_dim), nn.ReLU(), nn.Linear(ffn_dim, latent_dim)) for _ in
+            range(num_layers)
         ])
         self.norm3_layers = nn.ModuleList([
             nn.LayerNorm(latent_dim) for _ in range(num_layers)
@@ -472,9 +484,9 @@ class Bevformernet(nn.Module):
         cam0_T_camXs: (B,S,4,4)
         vox_util: vox util object
         '''
-        B, S, C, H, W = rgb_camXs.shape 
-        B0 = B*S
-        assert(C==3)
+        B, S, C, H, W = rgb_camXs.shape
+        B0 = B * S
+        assert (C == 3)
         # reshape tensors
         __p = lambda x: utils.basic.pack_seqdim(x, B)
         __u = lambda x: utils.basic.unpack_seqdim(x, B)
@@ -488,25 +500,25 @@ class Bevformernet(nn.Module):
         rgb_camXs_ = (rgb_camXs_ + 0.5 - self.mean.to(device)) / self.std.to(device)
         if self.rand_flip:
             B0, _, _, _ = rgb_camXs_.shape
-            self.rgb_flip_index = np.random.choice([0,1], B0).astype(bool)
+            self.rgb_flip_index = np.random.choice([0, 1], B0).astype(bool)
             rgb_camXs_[self.rgb_flip_index] = torch.flip(rgb_camXs_[self.rgb_flip_index], [-1])
         feat_camXs_ = self.encoder(rgb_camXs_)
         if self.rand_flip:
             feat_camXs_[self.rgb_flip_index] = torch.flip(feat_camXs_[self.rgb_flip_index], [-1])
         _, C, Hf, Wf = feat_camXs_.shape
-        feat_camXs = __u(feat_camXs_) # (B, S, C, Hf, Wf)
+        feat_camXs = __u(feat_camXs_)  # (B, S, C, Hf, Wf)
 
-        sy = Hf/float(H)
-        sx = Wf/float(W)
+        sy = Hf / float(H)
+        sx = Wf / float(W)
         Z, Y, X = self.Z, self.Y, self.X
 
         # compute the image locations (no flipping for now)
-        xyz_mem_ = utils.basic.gridcloud3d(B0, Z, Y, X, norm=False, device=rgb_camXs.device) # B0, Z*Y*X, 3
+        xyz_mem_ = utils.basic.gridcloud3d(B0, Z, Y, X, norm=False, device=rgb_camXs.device)  # B0, Z*Y*X, 3
         xyz_cam0_ = vox_util.Mem2Ref(xyz_mem_, Z, Y, X, assert_cube=False)
         xyz_camXs_ = utils.geom.apply_4x4(camXs_T_cam0_, xyz_cam0_)
-        xy_camXs_ = utils.geom.camera2pixels(xyz_camXs_, pix_T_cams_) # B0, N, 2
-        xy_camXs = __u(xy_camXs_) # B, S, N, 2, where N=Z*Y*X
-        reference_points_cam = xy_camXs_.reshape(B, S, Z, Y, X, 2).permute(1, 0, 2, 4, 3, 5).reshape(S, B, Z*X, Y, 2)
+        xy_camXs_ = utils.geom.camera2pixels(xyz_camXs_, pix_T_cams_)  # B0, N, 2
+        xy_camXs = __u(xy_camXs_)  # B, S, N, 2, where N=Z*Y*X
+        reference_points_cam = xy_camXs_.reshape(B, S, Z, Y, X, 2).permute(1, 0, 2, 4, 3, 5).reshape(S, B, Z * X, Y, 2)
         reference_points_cam[..., 0:1] = reference_points_cam[..., 0:1] / float(W)
         reference_points_cam[..., 1:2] = reference_points_cam[..., 1:2] / float(H)
         bev_mask = ((reference_points_cam[..., 1:2] > 0.0)
@@ -515,9 +527,12 @@ class Bevformernet(nn.Module):
                     & (reference_points_cam[..., 0:1] > 0.0)).squeeze(-1)
 
         # self & cross attentions
-        bev_queries = self.bev_queries.clone().unsqueeze(0).repeat(B,1,1,1).reshape(B, self.latent_dim, -1).permute(0,2,1) # B, Z*X, C
-        bev_queries_pos = self.bev_queries_pos.clone().unsqueeze(0).repeat(B,1,1,1).reshape(B, self.latent_dim, -1).permute(0,2,1) # B, Z*X, C
-        bev_keys = feat_camXs.reshape(B, S, C, Hf*Wf).permute(1, 3, 0, 2) # S, M, B, C
+        bev_queries = self.bev_queries.clone().unsqueeze(0).repeat(B, 1, 1, 1).reshape(B, self.latent_dim, -1).permute(
+            0, 2, 1)  # B, Z*X, C
+        bev_queries_pos = self.bev_queries_pos.clone().unsqueeze(0).repeat(B, 1, 1, 1).reshape(B, self.latent_dim,
+                                                                                               -1).permute(0, 2,
+                                                                                                           1)  # B, Z*X, C
+        bev_keys = feat_camXs.reshape(B, S, C, Hf * Wf).permute(1, 3, 0, 2)  # S, M, B, C
         spatial_shapes = bev_queries.new_zeros([1, 2]).long()
         spatial_shapes[0, 0] = Hf
         spatial_shapes[0, 1] = Wf
@@ -530,11 +545,11 @@ class Bevformernet(nn.Module):
             bev_queries = self.norm1_layers[i](bev_queries)
 
             # cross attention into the images
-            bev_queries = self.cross_attn_layers[i](bev_queries, bev_keys, bev_keys, 
-                query_pos=bev_queries_pos,
-                reference_points_cam = reference_points_cam,
-                spatial_shapes = spatial_shapes, 
-                bev_mask = bev_mask)
+            bev_queries = self.cross_attn_layers[i](bev_queries, bev_keys, bev_keys,
+                                                    query_pos=bev_queries_pos,
+                                                    reference_points_cam=reference_points_cam,
+                                                    spatial_shapes=spatial_shapes,
+                                                    bev_mask=bev_mask)
 
             # normalize (B, N, C)
             bev_queries = self.norm2_layers[i](bev_queries)
@@ -548,8 +563,8 @@ class Bevformernet(nn.Module):
         feat_bev = bev_queries.permute(0, 2, 1).reshape(B, self.latent_dim, self.Z, self.X)
 
         if self.rand_flip:
-            self.bev_flip1_index = np.random.choice([0,1], B).astype(bool)
-            self.bev_flip2_index = np.random.choice([0,1], B).astype(bool)
+            self.bev_flip1_index = np.random.choice([0, 1], B).astype(bool)
+            self.bev_flip2_index = np.random.choice([0, 1], B).astype(bool)
             feat_bev[self.bev_flip1_index] = torch.flip(feat_bev[self.bev_flip1_index], [-1])
             feat_bev[self.bev_flip2_index] = torch.flip(feat_bev[self.bev_flip2_index], [-3])
 

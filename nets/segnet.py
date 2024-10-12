@@ -1,8 +1,9 @@
+import sys
+
+import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-import sys
+
 sys.path.append("..")
 
 import utils.geom
@@ -15,12 +16,12 @@ from efficientnet_pytorch import EfficientNet
 
 EPS = 1e-4
 
-from functools import partial
 
 def set_bn_momentum(model, momentum=0.1):
     for m in model.modules():
         if isinstance(m, (nn.InstanceNorm1d, nn.InstanceNorm2d, nn.InstanceNorm3d)):
             m.momentum = momentum
+
 
 class UpsamplingConcat(nn.Module):
     def __init__(self, in_channels, out_channels, scale_factor=2):
@@ -42,6 +43,7 @@ class UpsamplingConcat(nn.Module):
         x_to_upsample = torch.cat([x, x_to_upsample], dim=1)
         return self.conv(x_to_upsample)
 
+
 class UpsamplingAdd(nn.Module):
     def __init__(self, in_channels, out_channels, scale_factor=2):
         super().__init__()
@@ -54,6 +56,7 @@ class UpsamplingAdd(nn.Module):
     def forward(self, x, x_skip):
         x = self.upsample_layer(x)
         return x + x_skip
+
 
 class Decoder(nn.Module):
     def __init__(self, in_channels, n_classes, predict_future_flow):
@@ -125,7 +128,7 @@ class Decoder(nn.Module):
         # (H/8, W/8)
         x = self.layer3(x)
 
-        # First upsample to (H/4, W/4)
+        #  First upsample to (H/4, W/4)
         x = self.up3_skip(x, skip_x['3'])
 
         # Second upsample to (H/2, W/2)
@@ -136,7 +139,7 @@ class Decoder(nn.Module):
 
         if bev_flip_indices is not None:
             bev_flip1_index, bev_flip2_index = bev_flip_indices
-            x[bev_flip2_index] = torch.flip(x[bev_flip2_index], [-2]) # note [-2] instead of [-3], since Y is gone now
+            x[bev_flip2_index] = torch.flip(x[bev_flip2_index], [-2])  # note [-2] instead of [-3], since Y is gone now
             x[bev_flip1_index] = torch.flip(x[bev_flip1_index], [-1])
 
         feat_output = self.feat_head(x)
@@ -155,7 +158,10 @@ class Decoder(nn.Module):
             if instance_future_output is not None else None,
         }
 
+
 import torchvision
+
+
 class Encoder_res101(nn.Module):
     def __init__(self, C):
         super().__init__()
@@ -175,6 +181,7 @@ class Encoder_res101(nn.Module):
 
         return x
 
+
 class Encoder_res50(nn.Module):
     def __init__(self, C):
         super().__init__()
@@ -193,6 +200,7 @@ class Encoder_res50(nn.Module):
         x = self.depth_layer(x)
 
         return x
+
 
 class Encoder_eff(nn.Module):
     def __init__(self, C, version='b4'):
@@ -285,8 +293,9 @@ class Encoder_eff(nn.Module):
         x = self.depth_layer(x)  # feature and depth head
         return x
 
+
 class Segnet(nn.Module):
-    def __init__(self, Z, Y, X, vox_util=None, 
+    def __init__(self, Z, Y, X, vox_util=None,
                  use_radar=False,
                  use_lidar=False,
                  use_metaradar=False,
@@ -301,14 +310,14 @@ class Segnet(nn.Module):
         self.use_radar = use_radar
         self.use_lidar = use_lidar
         self.use_metaradar = use_metaradar
-        self.do_rgbcompress = do_rgbcompress   
+        self.do_rgbcompress = do_rgbcompress
         self.rand_flip = rand_flip
         self.latent_dim = latent_dim
         self.encoder_type = encoder_type
 
-        self.mean = torch.as_tensor([0.485, 0.456, 0.406]).reshape(1,3,1,1).float().cuda()
-        self.std = torch.as_tensor([0.229, 0.224, 0.225]).reshape(1,3,1,1).float().cuda()
-        
+        self.mean = torch.as_tensor([0.485, 0.456, 0.406]).reshape(1, 3, 1, 1).float().cuda()
+        self.std = torch.as_tensor([0.229, 0.224, 0.225]).reshape(1, 3, 1, 1).float().cuda()
+
         # Encoder
         self.feat2d_dim = feat2d_dim = latent_dim
         if encoder_type == "res101":
@@ -325,26 +334,26 @@ class Segnet(nn.Module):
         if self.use_radar:
             if self.use_metaradar:
                 self.bev_compressor = nn.Sequential(
-                    nn.Conv2d(feat2d_dim*Y + 16*Y, feat2d_dim, kernel_size=3, padding=1, stride=1, bias=False),
+                    nn.Conv2d(feat2d_dim * Y + 16 * Y, feat2d_dim, kernel_size=3, padding=1, stride=1, bias=False),
                     nn.InstanceNorm2d(latent_dim),
                     nn.GELU(),
                 )
             else:
                 self.bev_compressor = nn.Sequential(
-                    nn.Conv2d(feat2d_dim*Y+1, feat2d_dim, kernel_size=3, padding=1, stride=1, bias=False),
+                    nn.Conv2d(feat2d_dim * Y + 1, feat2d_dim, kernel_size=3, padding=1, stride=1, bias=False),
                     nn.InstanceNorm2d(latent_dim),
                     nn.GELU(),
                 )
         elif self.use_lidar:
             self.bev_compressor = nn.Sequential(
-                nn.Conv2d(feat2d_dim*Y+Y, feat2d_dim, kernel_size=3, padding=1, stride=1, bias=False),
+                nn.Conv2d(feat2d_dim * Y + Y, feat2d_dim, kernel_size=3, padding=1, stride=1, bias=False),
                 nn.InstanceNorm2d(latent_dim),
                 nn.GELU(),
             )
         else:
             if self.do_rgbcompress:
                 self.bev_compressor = nn.Sequential(
-                    nn.Conv2d(feat2d_dim*Y, feat2d_dim, kernel_size=3, padding=1, stride=1, bias=False),
+                    nn.Conv2d(feat2d_dim * Y, feat2d_dim, kernel_size=3, padding=1, stride=1, bias=False),
                     nn.InstanceNorm2d(latent_dim),
                     nn.GELU(),
                 )
@@ -363,7 +372,7 @@ class Segnet(nn.Module):
         self.ce_weight = nn.Parameter(torch.tensor(0.0), requires_grad=True)
         self.center_weight = nn.Parameter(torch.tensor(0.0), requires_grad=True)
         self.offset_weight = nn.Parameter(torch.tensor(0.0), requires_grad=True)
-            
+
         # set_bn_momentum(self, 0.1)
 
         if vox_util is not None:
@@ -371,7 +380,7 @@ class Segnet(nn.Module):
             self.xyz_camA = vox_util.Mem2Ref(self.xyz_memA, Z, Y, X, assert_cube=False)
         else:
             self.xyz_camA = None
-        
+
     def forward(self, rgb_camXs, pix_T_cams, cam0_T_camXs, vox_util, rad_occ_mem0=None):
         '''
         B = batch size, S = number of cameras, C = 3, H = img height, W = img width
@@ -386,7 +395,7 @@ class Segnet(nn.Module):
             - (B, 1, Z, Y, X) when use_lidar = True
         '''
         B, S, C, H, W = rgb_camXs.shape
-        assert(C==3)
+        assert (C == 3)
         # reshape tensors
         __p = lambda x: utils.basic.pack_seqdim(x, B)
         __u = lambda x: utils.basic.unpack_seqdim(x, B)
@@ -400,21 +409,21 @@ class Segnet(nn.Module):
         rgb_camXs_ = (rgb_camXs_ + 0.5 - self.mean.to(device)) / self.std.to(device)
         if self.rand_flip:
             B0, _, _, _ = rgb_camXs_.shape
-            self.rgb_flip_index = np.random.choice([0,1], B0).astype(bool)
+            self.rgb_flip_index = np.random.choice([0, 1], B0).astype(bool)
             rgb_camXs_[self.rgb_flip_index] = torch.flip(rgb_camXs_[self.rgb_flip_index], [-1])
         feat_camXs_ = self.encoder(rgb_camXs_)
         if self.rand_flip:
             feat_camXs_[self.rgb_flip_index] = torch.flip(feat_camXs_[self.rgb_flip_index], [-1])
         _, C, Hf, Wf = feat_camXs_.shape
 
-        sy = Hf/float(H)
-        sx = Wf/float(W)
+        sy = Hf / float(H)
+        sx = Wf / float(W)
         Z, Y, X = self.Z, self.Y, self.X
 
         # unproject image feature to 3d grid
         featpix_T_cams_ = utils.geom.scale_intrinsics(pix_T_cams_, sx, sy)
         if self.xyz_camA is not None:
-            xyz_camA = self.xyz_camA.to(feat_camXs_.device).repeat(B*S,1,1)
+            xyz_camA = self.xyz_camA.to(feat_camXs_.device).repeat(B * S, 1, 1)
         else:
             xyz_camA = None
         feat_mems_ = vox_util.unproject_image_to_mem(
@@ -422,14 +431,14 @@ class Segnet(nn.Module):
             utils.basic.matmul2(featpix_T_cams_, camXs_T_cam0_),
             camXs_T_cam0_, Z, Y, X,
             xyz_camA=xyz_camA)
-        feat_mems = __u(feat_mems_) # B, S, C, Z, Y, X
+        feat_mems = __u(feat_mems_)  # B, S, C, Z, Y, X
 
         mask_mems = (torch.abs(feat_mems) > 0).float()
-        feat_mem = utils.basic.reduce_masked_mean(feat_mems, mask_mems, dim=1) # B, C, Z, Y, X
+        feat_mem = utils.basic.reduce_masked_mean(feat_mems, mask_mems, dim=1)  # B, C, Z, Y, X
 
         if self.rand_flip:
-            self.bev_flip1_index = np.random.choice([0,1], B).astype(bool)
-            self.bev_flip2_index = np.random.choice([0,1], B).astype(bool)
+            self.bev_flip1_index = np.random.choice([0, 1], B).astype(bool)
+            self.bev_flip2_index = np.random.choice([0, 1], B).astype(bool)
             feat_mem[self.bev_flip1_index] = torch.flip(feat_mem[self.bev_flip1_index], [-1])
             feat_mem[self.bev_flip2_index] = torch.flip(feat_mem[self.bev_flip2_index], [-3])
 
@@ -439,26 +448,26 @@ class Segnet(nn.Module):
 
         # bev compressing
         if self.use_radar:
-            assert(rad_occ_mem0 is not None)
+            assert (rad_occ_mem0 is not None)
             if not self.use_metaradar:
-                feat_bev_ = feat_mem.permute(0, 1, 3, 2, 4).reshape(B, self.feat2d_dim*Y, Z, X)
-                rad_bev = torch.sum(rad_occ_mem0, 3).clamp(0,1) # squish the vertical dim
+                feat_bev_ = feat_mem.permute(0, 1, 3, 2, 4).reshape(B, self.feat2d_dim * Y, Z, X)
+                rad_bev = torch.sum(rad_occ_mem0, 3).clamp(0, 1)  # squish the vertical dim
                 feat_bev_ = torch.cat([feat_bev_, rad_bev], dim=1)
                 feat_bev = self.bev_compressor(feat_bev_)
             else:
-                feat_bev_ = feat_mem.permute(0, 1, 3, 2, 4).reshape(B, self.feat2d_dim*Y, Z, X)
-                rad_bev_ = rad_occ_mem0.permute(0, 1, 3, 2, 4).reshape(B, 16*Y, Z, X)
+                feat_bev_ = feat_mem.permute(0, 1, 3, 2, 4).reshape(B, self.feat2d_dim * Y, Z, X)
+                rad_bev_ = rad_occ_mem0.permute(0, 1, 3, 2, 4).reshape(B, 16 * Y, Z, X)
                 feat_bev_ = torch.cat([feat_bev_, rad_bev_], dim=1)
                 feat_bev = self.bev_compressor(feat_bev_)
         elif self.use_lidar:
-            assert(rad_occ_mem0 is not None)
-            feat_bev_ = feat_mem.permute(0, 1, 3, 2, 4).reshape(B, self.feat2d_dim*Y, Z, X)
+            assert (rad_occ_mem0 is not None)
+            feat_bev_ = feat_mem.permute(0, 1, 3, 2, 4).reshape(B, self.feat2d_dim * Y, Z, X)
             rad_bev_ = rad_occ_mem0.permute(0, 1, 3, 2, 4).reshape(B, Y, Z, X)
             feat_bev_ = torch.cat([feat_bev_, rad_bev_], dim=1)
             feat_bev = self.bev_compressor(feat_bev_)
-        else: # rgb only
+        else:  # rgb only
             if self.do_rgbcompress:
-                feat_bev_ = feat_mem.permute(0, 1, 3, 2, 4).reshape(B, self.feat2d_dim*Y, Z, X)
+                feat_bev_ = feat_mem.permute(0, 1, 3, 2, 4).reshape(B, self.feat2d_dim * Y, Z, X)
                 feat_bev = self.bev_compressor(feat_bev_)
             else:
                 feat_bev = torch.sum(feat_mem, dim=3)
@@ -473,4 +482,3 @@ class Segnet(nn.Module):
         offset_e = out_dict['instance_offset']
 
         return raw_e, feat_e, seg_e, center_e, offset_e
-

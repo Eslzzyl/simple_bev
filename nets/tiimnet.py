@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import sys
+
 sys.path.append("..")
 
 import utils.geom
@@ -22,11 +23,10 @@ from typing import Optional
 from nets.mocha import MoChA
 from torch.utils.checkpoint import checkpoint
 
-from functools import partial
-from einops.layers.torch import Rearrange, Reduce
 
 def _get_clones(module, N):
     return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
+
 
 def _get_activation_fn(activation):
     """Return an activation function given a string"""
@@ -37,6 +37,7 @@ def _get_activation_fn(activation):
     if activation == "glu":
         return F.glu
     raise RuntimeError(f"activation should be relu/gelu, not {activation}.")
+
 
 class PositionalEncoding(nn.Module):
     r"""Inject some information about the relative or absolute position of the tokens
@@ -80,16 +81,17 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[: x.size(0), :]
         return self.dropout(x)
 
+
 class TransformerEncoderLayer(nn.Module):
     def __init__(
-        self,
-        d_model,
-        nhead,
-        dim_feedforward=2048,
-        dropout=0.1,
-        activation="relu",
-        normalize_before=False,
-        return_intermediate=False,
+            self,
+            d_model,
+            nhead,
+            dim_feedforward=2048,
+            dropout=0.1,
+            activation="relu",
+            normalize_before=False,
+            return_intermediate=False,
     ):
         super().__init__()
         self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
@@ -113,11 +115,11 @@ class TransformerEncoderLayer(nn.Module):
         return tensor if pos is None else tensor + pos
 
     def forward_post(
-        self,
-        src,
-        src_mask: Optional[Tensor] = None,
-        src_key_padding_mask: Optional[Tensor] = None,
-        pos: Optional[Tensor] = None,
+            self,
+            src,
+            src_mask: Optional[Tensor] = None,
+            src_key_padding_mask: Optional[Tensor] = None,
+            pos: Optional[Tensor] = None,
     ):
         q = k = self.with_pos_embed(src, pos)
         src2, src2_weights = self.self_attn(
@@ -136,11 +138,11 @@ class TransformerEncoderLayer(nn.Module):
             return src
 
     def forward_pre(
-        self,
-        src,
-        src_mask: Optional[Tensor] = None,
-        src_key_padding_mask: Optional[Tensor] = None,
-        pos: Optional[Tensor] = None,
+            self,
+            src,
+            src_mask: Optional[Tensor] = None,
+            src_key_padding_mask: Optional[Tensor] = None,
+            pos: Optional[Tensor] = None,
     ):
         src2 = self.norm1(src)
         q = k = self.with_pos_embed(src2, pos)
@@ -159,15 +161,16 @@ class TransformerEncoderLayer(nn.Module):
             return src
 
     def forward(
-        self,
-        src,
-        src_mask: Optional[Tensor] = None,
-        src_key_padding_mask: Optional[Tensor] = None,
-        pos: Optional[Tensor] = None,
+            self,
+            src,
+            src_mask: Optional[Tensor] = None,
+            src_key_padding_mask: Optional[Tensor] = None,
+            pos: Optional[Tensor] = None,
     ):
         if self.normalize_before:
             return self.forward_pre(src, src_mask, src_key_padding_mask, pos)
         return self.forward_post(src, src_mask, src_key_padding_mask, pos)
+
 
 class TransformerEncoder(nn.Module):
     def __init__(self, encoder_layer, num_layers, norm=None, return_intermediate=False):
@@ -180,11 +183,11 @@ class TransformerEncoder(nn.Module):
         self.return_intermediate = return_intermediate
 
     def forward(
-        self,
-        src,
-        mask: Optional[Tensor] = None,
-        src_key_padding_mask: Optional[Tensor] = None,
-        pos: Optional[Tensor] = None,
+            self,
+            src,
+            mask: Optional[Tensor] = None,
+            src_key_padding_mask: Optional[Tensor] = None,
+            pos: Optional[Tensor] = None,
     ):
         output = src
         intermediate = None
@@ -215,15 +218,16 @@ class TransformerEncoder(nn.Module):
         else:
             return output
 
+
 class TransformerDecoderLayerMMA(nn.Module):
     def __init__(
-        self,
-        d_model,
-        nhead,
-        dim_feedforward=2048,
-        dropout=0.1,
-        activation="relu",
-        normalize_before=False,
+            self,
+            d_model,
+            nhead,
+            dim_feedforward=2048,
+            dropout=0.1,
+            activation="relu",
+            normalize_before=False,
     ):
         super().__init__()
         self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
@@ -257,15 +261,15 @@ class TransformerDecoderLayerMMA(nn.Module):
         return tensor if pos is None else tensor + pos
 
     def forward_post(
-        self,
-        tgt,
-        memory,
-        tgt_mask: Optional[Tensor] = None,
-        memory_mask: Optional[Tensor] = None,
-        tgt_key_padding_mask: Optional[Tensor] = None,
-        memory_key_padding_mask: Optional[Tensor] = None,
-        pos: Optional[Tensor] = None,
-        query_pos: Optional[Tensor] = None,
+            self,
+            tgt,
+            memory,
+            tgt_mask: Optional[Tensor] = None,
+            memory_mask: Optional[Tensor] = None,
+            tgt_key_padding_mask: Optional[Tensor] = None,
+            memory_key_padding_mask: Optional[Tensor] = None,
+            pos: Optional[Tensor] = None,
+            query_pos: Optional[Tensor] = None,
     ):
         q = k = self.with_pos_embed(tgt, query_pos)
         tgt2 = self.self_attn(
@@ -288,15 +292,15 @@ class TransformerDecoderLayerMMA(nn.Module):
         return tgt
 
     def forward_pre(
-        self,
-        tgt,
-        memory,
-        tgt_mask: Optional[Tensor] = None,
-        memory_mask: Optional[Tensor] = None,
-        tgt_key_padding_mask: Optional[Tensor] = None,
-        memory_key_padding_mask: Optional[Tensor] = None,
-        pos: Optional[Tensor] = None,
-        query_pos: Optional[Tensor] = None,
+            self,
+            tgt,
+            memory,
+            tgt_mask: Optional[Tensor] = None,
+            memory_mask: Optional[Tensor] = None,
+            tgt_key_padding_mask: Optional[Tensor] = None,
+            memory_key_padding_mask: Optional[Tensor] = None,
+            pos: Optional[Tensor] = None,
+            query_pos: Optional[Tensor] = None,
     ):
         tgt2 = self.norm1(tgt)
         q = k = self.with_pos_embed(tgt2, query_pos)
@@ -319,15 +323,15 @@ class TransformerDecoderLayerMMA(nn.Module):
         return tgt
 
     def forward(
-        self,
-        tgt,
-        memory,
-        tgt_mask: Optional[Tensor] = None,
-        memory_mask: Optional[Tensor] = None,
-        tgt_key_padding_mask: Optional[Tensor] = None,
-        memory_key_padding_mask: Optional[Tensor] = None,
-        pos: Optional[Tensor] = None,
-        query_pos: Optional[Tensor] = None,
+            self,
+            tgt,
+            memory,
+            tgt_mask: Optional[Tensor] = None,
+            memory_mask: Optional[Tensor] = None,
+            tgt_key_padding_mask: Optional[Tensor] = None,
+            memory_key_padding_mask: Optional[Tensor] = None,
+            pos: Optional[Tensor] = None,
+            query_pos: Optional[Tensor] = None,
     ):
         if self.normalize_before:
             return self.forward_pre(
@@ -351,6 +355,7 @@ class TransformerDecoderLayerMMA(nn.Module):
             query_pos,
         )
 
+
 class TransformerDecoder(nn.Module):
     def __init__(self, decoder_layer, num_layers, norm=None, return_intermediate=False):
         super().__init__()
@@ -360,15 +365,15 @@ class TransformerDecoder(nn.Module):
         self.return_intermediate = return_intermediate
 
     def forward(
-        self,
-        tgt,
-        memory,
-        tgt_mask: Optional[Tensor] = None,
-        memory_mask: Optional[Tensor] = None,
-        tgt_key_padding_mask: Optional[Tensor] = None,
-        memory_key_padding_mask: Optional[Tensor] = None,
-        pos: Optional[Tensor] = None,
-        query_pos: Optional[Tensor] = None,
+            self,
+            tgt,
+            memory,
+            tgt_mask: Optional[Tensor] = None,
+            memory_mask: Optional[Tensor] = None,
+            tgt_key_padding_mask: Optional[Tensor] = None,
+            memory_key_padding_mask: Optional[Tensor] = None,
+            pos: Optional[Tensor] = None,
+            query_pos: Optional[Tensor] = None,
     ):
         output = tgt
         intermediate = None
@@ -407,25 +412,26 @@ class TransformerDecoder(nn.Module):
         else:
             return output
 
+
 class TransformerMonotonic(nn.Module):
     def __init__(
-        self,
-        d_model=512,
-        nhead=8,
-        num_encoder_layers=6,
-        num_decoder_layers=6,
-        dim_feedforward=2048,
-        dropout=0.1,
-        activation="relu",
-        normalize_before=False,
-        return_intermediate_dec=False,
+            self,
+            d_model=512,
+            nhead=8,
+            num_encoder_layers=6,
+            num_decoder_layers=6,
+            dim_feedforward=2048,
+            dropout=0.1,
+            activation="relu",
+            normalize_before=False,
+            return_intermediate_dec=False,
     ):
         super().__init__()
 
         encoder_layer = TransformerEncoderLayer(
             d_model, nhead, dim_feedforward, dropout, activation, normalize_before
         )
-        encoder_norm = nn.LayerNorm(d_model) if normalize_before else None 
+        encoder_norm = nn.LayerNorm(d_model) if normalize_before else None
         self.encoder = TransformerEncoder(
             encoder_layer, num_encoder_layers, encoder_norm
         )
@@ -469,8 +475,10 @@ class TransformerMonotonic(nn.Module):
         )
         return hs
 
+
 class VoxelsSumming(torch.autograd.Function):
     """Adapted from https://github.com/nv-tlabs/lift-splat-shoot/blob/master/src/tools.py#L193"""
+
     @staticmethod
     def forward(ctx, x, geometry, ranks):
         """The features `x` and `geometry` are ranked by voxel positions."""
@@ -502,10 +510,12 @@ class VoxelsSumming(torch.autograd.Function):
 
         return output_grad, None, None
 
+
 def set_bn_momentum(model, momentum=0.1):
     for m in model.modules():
         if isinstance(m, (nn.InstanceNorm1d, nn.InstanceNorm2d, nn.InstanceNorm3d)):
             m.momentum = momentum
+
 
 class UpsamplingConcat(nn.Module):
     def __init__(self, in_channels, out_channels, scale_factor=2):
@@ -527,6 +537,7 @@ class UpsamplingConcat(nn.Module):
         x_to_upsample = torch.cat([x, x_to_upsample], dim=1)
         return self.conv(x_to_upsample)
 
+
 class UpsamplingAdd(nn.Module):
     def __init__(self, in_channels, out_channels, scale_factor=2):
         super().__init__()
@@ -539,6 +550,7 @@ class UpsamplingAdd(nn.Module):
     def forward(self, x, x_skip):
         x = self.upsample_layer(x)
         return x + x_skip
+
 
 class Decoder(nn.Module):
     def __init__(self, in_channels, n_classes, predict_future_flow):
@@ -621,7 +633,7 @@ class Decoder(nn.Module):
 
         if bev_flip_indices is not None:
             bev_flip1_index, bev_flip2_index = bev_flip_indices
-            x[bev_flip2_index] = torch.flip(x[bev_flip2_index], [-2]) # note [-2] instead of [-3], since Y is gone now
+            x[bev_flip2_index] = torch.flip(x[bev_flip2_index], [-2])  # note [-2] instead of [-3], since Y is gone now
             x[bev_flip1_index] = torch.flip(x[bev_flip1_index], [-1])
 
         feat_output = self.feat_head(x)
@@ -640,7 +652,10 @@ class Decoder(nn.Module):
             if instance_future_output is not None else None,
         }
 
+
 import torchvision
+
+
 class Encoder_res101(nn.Module):
     def __init__(self, C):
         super().__init__()
@@ -660,6 +675,7 @@ class Encoder_res101(nn.Module):
 
         return x
 
+
 class Encoder_res50(nn.Module):
     def __init__(self, C):
         super().__init__()
@@ -678,6 +694,7 @@ class Encoder_res50(nn.Module):
         x = self.depth_layer(x)
 
         return x
+
 
 class Encoder_eff(nn.Module):
     def __init__(self, C, version='b4'):
@@ -770,10 +787,11 @@ class Encoder_eff(nn.Module):
         x = self.depth_layer(x)  # feature and depth head
         return x
 
+
 class VanillaSelfAttention(nn.Module):
     def __init__(self, dim=128, dropout=0.1):
         super(VanillaSelfAttention, self).__init__()
-        self.dim = dim 
+        self.dim = dim
         self.dropout = nn.Dropout(dropout)
         self.deformable_attention = MSDeformAttn(d_model=dim, n_levels=1, n_heads=4, n_points=8)
         self.output_proj = nn.Linear(dim, dim)
@@ -791,24 +809,25 @@ class VanillaSelfAttention(nn.Module):
         device = query.device
         Z, X = 200, 200
         ref_z, ref_x = torch.meshgrid(
-            torch.linspace(0.5, Z-0.5, Z, dtype=torch.float, device=query.device),
-            torch.linspace(0.5, X-0.5, X, dtype=torch.float, device=query.device)
+            torch.linspace(0.5, Z - 0.5, Z, dtype=torch.float, device=query.device),
+            torch.linspace(0.5, X - 0.5, X, dtype=torch.float, device=query.device)
         )
         ref_z = ref_z.reshape(-1)[None] / Z
         ref_x = ref_x.reshape(-1)[None] / X
         reference_points = torch.stack((ref_z, ref_x), -1)
-        reference_points = reference_points.repeat(B, 1, 1).unsqueeze(2) # (B, N, 1, 2)
+        reference_points = reference_points.repeat(B, 1, 1).unsqueeze(2)  # (B, N, 1, 2)
 
         B, N, C = query.shape
-        input_spatial_shapes = query.new_zeros([1,2]).long()
+        input_spatial_shapes = query.new_zeros([1, 2]).long()
         input_spatial_shapes[:] = 200
-        input_level_start_index = query.new_zeros([1,]).long()
-        queries = self.deformable_attention(query, reference_points, query.clone(), 
-            input_spatial_shapes, input_level_start_index)
+        input_level_start_index = query.new_zeros([1, ]).long()
+        queries = self.deformable_attention(query, reference_points, query.clone(),
+                                            input_spatial_shapes, input_level_start_index)
 
         queries = self.output_proj(queries)
 
         return self.dropout(queries) + inp_residual
+
 
 class SpatialCrossAttention(nn.Module):
     # From https://github.com/zhiqi-li/BEVFormer
@@ -852,25 +871,26 @@ class SpatialCrossAttention(nn.Module):
             for i, reference_points_per_img in enumerate(reference_points_cam):
                 index_query_per_img = indexes[i]
                 queries_rebatch[j, i, :len(index_query_per_img)] = query[j, index_query_per_img]
-                reference_points_rebatch[j, i, :len(index_query_per_img)] = reference_points_per_img[j, index_query_per_img]
+                reference_points_rebatch[j, i, :len(index_query_per_img)] = reference_points_per_img[
+                    j, index_query_per_img]
 
         key = key.permute(2, 0, 1, 3).reshape(
             B * S, M, C)
         value = value.permute(2, 0, 1, 3).reshape(
             B * S, M, C)
 
-        level_start_index = query.new_zeros([1,]).long()
-        queries = self.deformable_attention(query=queries_rebatch.view(B*S, max_len, self.dim),
-            key=key, value=value,
-            reference_points=reference_points_rebatch.view(B*S, max_len, D, 2),
-            spatial_shapes=spatial_shapes,
-            level_start_index=level_start_index).view(B, S, max_len, self.dim)
+        level_start_index = query.new_zeros([1, ]).long()
+        queries = self.deformable_attention(query=queries_rebatch.view(B * S, max_len, self.dim),
+                                            key=key, value=value,
+                                            reference_points=reference_points_rebatch.view(B * S, max_len, D, 2),
+                                            spatial_shapes=spatial_shapes,
+                                            level_start_index=level_start_index).view(B, S, max_len, self.dim)
 
         for j in range(B):
             for i, index_query_per_img in enumerate(indexes):
                 slots[j, index_query_per_img] += queries[j, i, :len(index_query_per_img)]
 
-        count = bev_mask.sum(-1) > 0 
+        count = bev_mask.sum(-1) > 0
         count = count.permute(1, 2, 0).sum(-1)
         count = torch.clamp(count, min=1.0)
         slots = slots / count[..., None]
@@ -878,9 +898,10 @@ class SpatialCrossAttention(nn.Module):
 
         return self.dropout(slots) + inp_residual
 
+
 # no radar/lidar integration
 class Tiimnet(nn.Module):
-    def __init__(self, Z, Y, X, 
+    def __init__(self, Z, Y, X,
                  ZMAX=50,
                  rand_flip=False,
                  latent_dim=128,
@@ -888,17 +909,17 @@ class Tiimnet(nn.Module):
         super(Tiimnet, self).__init__()
         assert (encoder_type in ["res101", "res50", "effb0", "effb4"])
 
-        self.Z, self.Y, self.X = Z, Y, X 
-        self.ZMAX = ZMAX 
+        self.Z, self.Y, self.X = Z, Y, X
+        self.ZMAX = ZMAX
         self.rand_flip = rand_flip
         self.latent_dim = latent_dim
         self.encoder_type = encoder_type
         self.use_radar = False
         self.use_lidar = False
 
-        self.mean = torch.as_tensor([0.485, 0.456, 0.406]).reshape(1,3,1,1).float().cuda()
-        self.std = torch.as_tensor([0.229, 0.224, 0.225]).reshape(1,3,1,1).float().cuda()
-        
+        self.mean = torch.as_tensor([0.485, 0.456, 0.406]).reshape(1, 3, 1, 1).float().cuda()
+        self.std = torch.as_tensor([0.229, 0.224, 0.225]).reshape(1, 3, 1, 1).float().cuda()
+
         # Encoder
         self.feat2d_dim = feat2d_dim = latent_dim
         if encoder_type == "res101":
@@ -915,7 +936,7 @@ class Tiimnet(nn.Module):
         self.pos_enc = PositionalEncoding(latent_dim, 0.1, 1000)
         self.query_embed = nn.Embedding(100, latent_dim)
         self.tbev8 = TransformerMonotonic(
-            d_model = latent_dim,
+            d_model=latent_dim,
             nhead=4,
             num_encoder_layers=2,
             num_decoder_layers=2,
@@ -948,16 +969,16 @@ class Tiimnet(nn.Module):
 
     def splat_to_bev(self, feats, coords_mem, Z, Y, X):
         """ Adapted from https://github.com/wayveai/fiery/blob/master/fiery/models/fiery.py#L222"""
-        B,S,C,D,H,W = feats.shape
-        output = torch.zeros((B,C,Z,X), dtype=torch.float, device=feats.device)
-        output_ones = torch.zeros((B,1,Z,X), dtype=torch.float, device=feats.device)
+        B, S, C, D, H, W = feats.shape
+        output = torch.zeros((B, C, Z, X), dtype=torch.float, device=feats.device)
+        output_ones = torch.zeros((B, 1, Z, X), dtype=torch.float, device=feats.device)
 
-        feats = feats.permute(0,1,3,4,5,2) # put channels on end
+        feats = feats.permute(0, 1, 3, 4, 5, 2)  # put channels on end
 
         # print('feats', feats.shape)
         # print('coords_mem', coords_mem.shape)
 
-        N = S * D * H * W # number of 3D coordinates per batch
+        N = S * D * H * W  # number of 3D coordinates per batch
         for b in range(B):
             # flatten x
             x_b = feats[b].reshape(N, C)
@@ -968,32 +989,32 @@ class Tiimnet(nn.Module):
 
             # drop elements that are outside the considered spatial extent
             valid = (
-                (coords_mem_b[:, 0] >= 0)
-                & (coords_mem_b[:, 0] < X)
-                & (coords_mem_b[:, 1] >= 0)
-                & (coords_mem_b[:, 1] < Y)
-                & (coords_mem_b[:, 2] >= 0)
-                & (coords_mem_b[:, 2] < Z)
+                    (coords_mem_b[:, 0] >= 0)
+                    & (coords_mem_b[:, 0] < X)
+                    & (coords_mem_b[:, 1] >= 0)
+                    & (coords_mem_b[:, 1] < Y)
+                    & (coords_mem_b[:, 2] >= 0)
+                    & (coords_mem_b[:, 2] < Z)
             )
             x_b = x_b[valid]
             coords_mem_b = coords_mem_b[valid]
 
             # sort the tensor contents
             inds = (
-                coords_mem_b[:, 2] * Y * X
-                + coords_mem_b[:, 1] * X
-                + coords_mem_b[:, 0]
+                    coords_mem_b[:, 2] * Y * X
+                    + coords_mem_b[:, 1] * X
+                    + coords_mem_b[:, 0]
             )
             sorting = inds.argsort()
             x_b, coords_mem_b, inds = x_b[sorting], coords_mem_b[sorting], inds[sorting]
 
-            one_b = torch.ones_like(x_b[:,0:1])
+            one_b = torch.ones_like(x_b[:, 0:1])
             # project to BEV by summing within voxels
             # x_b, coords_mem_b = VoxelsSumming.apply(x_b, coords_mem_b, inds)
 
             # print('x_b0', x_b.shape)
             # print('one_b0', one_b.shape)
-            
+
             x_b, _ = VoxelsSumming.apply(x_b, coords_mem_b.clone(), inds)
             one_b, coords_mem_b = VoxelsSumming.apply(one_b, coords_mem_b, inds)
             # print('x_b', x_b.shape)
@@ -1003,18 +1024,18 @@ class Tiimnet(nn.Module):
 
             x_b = x_b / one_b.clamp(min=1.0)
 
-            bev_feature = torch.zeros((Z,Y,X,C), device=x_b.device)
-            bev_ones = torch.zeros((Z,Y,X,1), device=x_b.device)
-            bev_feature[coords_mem_b[:,2],coords_mem_b[:,1],coords_mem_b[:,0]] = x_b # Z,Y,X,C
-            bev_ones[coords_mem_b[:,2],coords_mem_b[:,1],coords_mem_b[:,0]] = one_b # Z,Y,X,C
+            bev_feature = torch.zeros((Z, Y, X, C), device=x_b.device)
+            bev_ones = torch.zeros((Z, Y, X, 1), device=x_b.device)
+            bev_feature[coords_mem_b[:, 2], coords_mem_b[:, 1], coords_mem_b[:, 0]] = x_b  # Z,Y,X,C
+            bev_ones[coords_mem_b[:, 2], coords_mem_b[:, 1], coords_mem_b[:, 0]] = one_b  # Z,Y,X,C
             # print('bev_feature', bev_feature.shape)
 
-            bev_feature = bev_feature.sum(dim=1) # Z,X,C
-            bev_feature = bev_feature.permute(2,0,1) # C,Z,X
+            bev_feature = bev_feature.sum(dim=1)  # Z,X,C
+            bev_feature = bev_feature.permute(2, 0, 1)  # C,Z,X
 
-            bev_ones = bev_ones.sum(dim=1) # Z,X,C
-            bev_ones = bev_ones.permute(2,0,1) # C,Z,X
-            
+            bev_ones = bev_ones.sum(dim=1)  # Z,X,C
+            bev_ones = bev_ones.permute(2, 0, 1)  # C,Z,X
+
             output[b] = bev_feature
             output_ones[b] = bev_ones
         output = output / output_ones.clamp(min=1)
@@ -1029,9 +1050,9 @@ class Tiimnet(nn.Module):
         cam0_T_camXs: (B,S,4,4)
         vox_util: vox util object
         '''
-        B, S, C, H, W = rgb_camXs.shape 
-        B0 = B*S
-        assert(C==3)
+        B, S, C, H, W = rgb_camXs.shape
+        B0 = B * S
+        assert (C == 3)
         # reshape tensors
         __p = lambda x: utils.basic.pack_seqdim(x, B)
         __u = lambda x: utils.basic.unpack_seqdim(x, B)
@@ -1045,22 +1066,22 @@ class Tiimnet(nn.Module):
         rgb_camXs_ = (rgb_camXs_ + 0.5 - self.mean.to(device)) / self.std.to(device)
         if self.rand_flip:
             B0, _, _, _ = rgb_camXs_.shape
-            self.rgb_flip_index = np.random.choice([0,1], B0).astype(bool)
+            self.rgb_flip_index = np.random.choice([0, 1], B0).astype(bool)
             rgb_camXs_[self.rgb_flip_index] = torch.flip(rgb_camXs_[self.rgb_flip_index], [-1])
-        feat_camXs_ = self.encoder(rgb_camXs_) # (B0, C, Hf, Wf)
+        feat_camXs_ = self.encoder(rgb_camXs_)  # (B0, C, Hf, Wf)
         if self.rand_flip:
             feat_camXs_[self.rgb_flip_index] = torch.flip(feat_camXs_[self.rgb_flip_index], [-1])
         _, C, Hf, Wf = feat_camXs_.shape
         # feat_camXs = __u(feat_camXs_) # (B, S, C, Hf, Wf)
 
-        sy = Hf/float(H)
-        sx = Wf/float(W)
+        sy = Hf / float(H)
+        sx = Wf / float(W)
         Z, Y, X = self.Z, self.Y, self.X
 
         # translating images into maps
         DMIN = 2.0
-        DMAX = int(np.sqrt(self.ZMAX**2 + self.ZMAX**2)*0.9)
-        self.D = Z//2
+        DMAX = int(np.sqrt(self.ZMAX ** 2 + self.ZMAX ** 2) * 0.9)
+        self.D = Z // 2
 
         # feat_camXs_ B0, C, Hf, Wf
         tgt8 = torch.zeros_like(feat_camXs_[:, 0, :1]).expand(-1, self.D, -1)
@@ -1073,23 +1094,23 @@ class Tiimnet(nn.Module):
             self.pos_enc(self.trans_reshape(tgt8)),
             self.trans_reshape(qe8),
             self.pos_enc(self.trans_reshape(feat_camXs_)),
-        ) # Z, B0*Wf, C
+        )  # Z, B0*Wf, C
 
-        xyd_pixXs_ = utils.basic.gridcloud3d(B*S, self.D, 1, Wf) # BS, DW, 3
-        xyd_pixXs_[:,:,2] = (xyd_pixXs_[:,:,2]/(self.D-1) * (DMAX-DMIN)) + DMIN # put into range [DMIN,DMAX]
+        xyd_pixXs_ = utils.basic.gridcloud3d(B * S, self.D, 1, Wf)  # BS, DW, 3
+        xyd_pixXs_[:, :, 2] = (xyd_pixXs_[:, :, 2] / (self.D - 1) * (DMAX - DMIN)) + DMIN  # put into range [DMIN,DMAX]
         featpix_T_cams_ = utils.geom.scale_intrinsics(pix_T_cams_, sx, sy)
         xyz_camXs_ = utils.geom.xyd2pointcloud(xyd_pixXs_, featpix_T_cams_)
         xyz_cam0s_ = utils.geom.apply_4x4(__p(cam0_T_camXs), xyz_camXs_)
         xyz_mem0s_ = vox_util.Ref2Mem(xyz_cam0s_, Z, Y, X, assert_cube=False)
-        xyz_mem0s = __u(xyz_mem0s_) # B,S,DW,3
+        xyz_mem0s = __u(xyz_mem0s_)  # B,S,DW,3
         # TODO: convert bev8 into feat_tileXs
-        feat_tileXs_ = bev8.reshape(self.D, B0, Wf, self.latent_dim).permute(1, 3, 0, 2) # (B0, C, D, Wf)
-        feat_tileXs = __u(feat_tileXs_).unsqueeze(-2) # B,S,C,D,1,Wf
+        feat_tileXs_ = bev8.reshape(self.D, B0, Wf, self.latent_dim).permute(1, 3, 0, 2)  # (B0, C, D, Wf)
+        feat_tileXs = __u(feat_tileXs_).unsqueeze(-2)  # B,S,C,D,1,Wf
         feat_bev = self.splat_to_bev(feat_tileXs, xyz_mem0s, Z, Y, X)
 
         if self.rand_flip:
-            self.bev_flip1_index = np.random.choice([0,1], B).astype(bool)
-            self.bev_flip2_index = np.random.choice([0,1], B).astype(bool)
+            self.bev_flip1_index = np.random.choice([0, 1], B).astype(bool)
+            self.bev_flip2_index = np.random.choice([0, 1], B).astype(bool)
             feat_bev[self.bev_flip1_index] = torch.flip(feat_mem[self.bev_flip1_index], [-1])
             feat_bev[self.bev_flip2_index] = torch.flip(feat_mem[self.bev_flip2_index], [-3])
 
